@@ -15,6 +15,16 @@ services:
     networks:
       - log
 
+  prometheus:
+    image: prom/prometheus
+    container_name: action_log_prometheus
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - log
+
 networks:
   log:
     external:
