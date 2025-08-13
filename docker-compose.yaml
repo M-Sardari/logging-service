@@ -1,0 +1,21 @@
+services:
+  grafana:
+    image: grafana/grafana
+    container_name: action_log_grafana
+    ports:
+      - '8000:3000'
+    networks:
+      - log
+
+  loki:
+    image: grafana/loki:2.9.1
+    container_name: action_log_loki
+    ports:
+      - '8001:3100'
+    networks:
+      - log
+
+networks:
+  log:
+    external:
+      name: my_network
