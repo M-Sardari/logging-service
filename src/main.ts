@@ -1,17 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { logger } from './logger/logger';
+import { CustomLogger } from './common/handler/custom.logger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new CustomLogger('Bootstrap');
+  const app = await NestFactory.create(AppModule, { logger });
 
-  app.useLogger({
-    log: (message) => logger.info(message),
-    error: (message) => logger.error(message),
-    warn: (message) => logger.warn(message),
-    debug: (message) => logger.debug(message),
-    verbose: (message) => logger.verbose(message),
-  });
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  logger.log(`Application is running on port ${port}`);
 }
 bootstrap();
