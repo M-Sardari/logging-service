@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { CustomLogger } from './common/handler/custom.logger';
+import { Injectable, Logger } from '@nestjs/common';
+import { uuidGenerator } from './common/utils/uuid';
 
 @Injectable()
 export class AppService {
-  private readonly logger = new CustomLogger(AppService.name);
+  private readonly logger = new Logger(AppService.name);
 
   getHello(): string {
-    this.logger.log('Hello endpoint called');
+    this.logger.log('Hello endpoint called', uuidGenerator());
     this.logger.warn('Sample warning log for Grafana');
-    this.logger.debug('Debug details', 'demo-request-id');
+    this.logger.debug('Debug details');
     return 'Hello World!';
   }
 }

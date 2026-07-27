@@ -3,14 +3,14 @@ services:
     build: .
     container_name: logging_service_app
     environment:
-      LOG_FORMAT: json
-      LOG_TO_FILE: 'true'
-      SERVICE_NAME: logging-service
+      LOG_TO_FILE: "true"
+      SERVICE_NAME: LOGGING-SERVICE
+      APP_ENV: development
       PORT: 3000
     volumes:
       - app-logs:/var/log/app
     ports:
-      - '3000:3000'
+      - "3000:3000"
     networks:
       - log
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
     ports:
-      - '3100:3100'
+      - "3100:3100"
     networks:
       - log
     restart: unless-stopped
@@ -51,7 +51,7 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - '8000:3000'
+      - "8000:3000"
     depends_on:
       - loki
     networks:
