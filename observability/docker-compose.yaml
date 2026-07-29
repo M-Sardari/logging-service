@@ -15,6 +15,7 @@ services:
   alloy:
     image: grafana/alloy:v1.18.0
     container_name: sih-alloy
+    privileged: true
     environment:
       LOKI_HOST: ${LOKI_HOST:-local-dev}
     command:
@@ -25,11 +26,34 @@ services:
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
       - alloy-data:/var/lib/alloy/data
     ports:
       - "12345:12345"
     depends_on:
       - loki
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: sih-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
     restart: unless-stopped
     networks:
       - observability
@@ -47,6 +71,7 @@ services:
       - "3000:3000"
     depends_on:
       - loki
+      - prometheus
     restart: unless-stopped
     networks:
       - observability
@@ -58,4 +83,5 @@ networks:
 volumes:
   loki-data:
   alloy-data:
+  prometheus-data:
   grafana-data:

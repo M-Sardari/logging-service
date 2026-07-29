@@ -1,24 +1,29 @@
 # logging-service
 
-Centralized log aggregation for Docker microservices — **Loki**, **Grafana Alloy**, and **Grafana**, ready to run with a single `docker compose up`.
+Centralized **logs + metrics** for Docker microservices — **Loki**, **Prometheus**, **Grafana Alloy**, and **Grafana**, ready to run with a single `docker compose up`.
 
-Alloy tails container logs through the Docker socket, normalizes log levels, and pushes them to Loki. Grafana ships with a pre-provisioned **Docker Loki Operations** dashboard.
+Alloy tails container logs through the Docker socket, collects container metrics via its built-in cAdvisor exporter, and pushes logs to Loki and metrics to Prometheus. Grafana ships with a pre-provisioned **Docker Operations** dashboard (logs + metrics).
 
 ---
 
 ## How it works
 
 ```
-Docker containers (stdout)
+Docker containers (stdout + cgroups)
         │
-        ▼
-  Grafana Alloy          ← reads via docker.sock, parses levels, adds labels
-        │
-        ▼
-  Loki                   ← stores logs (7-day retention)
-        │
-        ▼
-  Grafana                ← dashboard + LogQL explorer
+        ├──────────────────────────────┐
+        ▼                              ▼
+  Grafana Alloy                   (cAdvisor exporter inside Alloy)
+  (logs + metrics via docker.sock)
+        │                              │
+        ▼                              ▼
+  Loki                            Prometheus
+  (7-day retention)               (7-day retention)
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+                  Grafana
+            (logs + metrics dashboard)
 ```
 
 **Important:** your application services do **not** talk to Loki directly. They only need to write logs to stdout. Alloy picks them up from the Docker daemon on the same host.
@@ -42,9 +47,10 @@ docker compose up -d
 |---|---|---|
 | Grafana | http://localhost:3000 | `admin` / `admin` |
 | Loki API | http://localhost:3100 | — |
+| Prometheus | http://localhost:9090 | — |
 | Alloy UI | http://localhost:12345 | — |
 
-Open Grafana → folder **Logging** → dashboard **Docker Loki Operations**.
+Open Grafana → folder **Logging** → dashboard **Docker Operations**.
 
 ---
 
@@ -130,6 +136,20 @@ LOG_FORMAT=json SERVICE_NAME=auth npm run start:dev
 
 Live tail with level badges. Select **info** to see standard `[LOG]` application output. **error** only shows results when actual error-level logs exist.
 
+### Container metrics (Alloy → Prometheus)
+
+The **Container Metrics** section uses the same **Container** dropdown filter:
+
+| Panel | Source | What it shows |
+|---|---|---|
+| CPU Usage | Alloy cAdvisor exporter | CPU % for selected container(s) |
+| Memory | Alloy cAdvisor exporter | Working-set memory |
+| Network In / Out | Alloy cAdvisor exporter | Receive / transmit throughput |
+| CPU by Container | Alloy cAdvisor exporter | CPU % over time, one line per container |
+| Memory by Container | Alloy cAdvisor exporter | Memory usage over time |
+
+Metrics are collected from `sih-service-*` and `sih-gateway` containers only (same filter as Alloy logs).
+
 ---
 
 ## Verify the stack
@@ -158,11 +178,12 @@ curl http://localhost:3000/
 ```
 logging-service/
 ├── observability/
-│   ├── docker-compose.yaml              # Loki + Alloy + Grafana
+│   ├── docker-compose.yaml              # Loki + Alloy + Prometheus + Grafana
 │   ├── .env.example
-│   ├── alloy/config.alloy               # container discovery, parsing, push
+│   ├── alloy/config.alloy               # logs pipeline + cAdvisor metrics export
 │   ├── loki/loki-config.yaml            # retention (7d), ingestion limits
-│   └── grafana/provisioning/            # datasource + dashboard (auto-loaded)
+│   ├── prometheus/prometheus.yml        # Prometheus self-scrape + Alloy
+│   └── grafana/provisioning/            # datasources + dashboard (auto-loaded)
 └── src/
     └── common/handler/custom.logger.ts  # NestJS logger (JSON + pretty modes)
 ```
@@ -175,7 +196,7 @@ logging-service/
 
 ```bash
 cd observability
-docker compose restart alloy grafana
+docker compose restart alloy grafana prometheus
 ```
 
 ### Reset Alloy read position
@@ -210,4 +231,5 @@ Run one stack per Docker host. Set a different `LOKI_HOST` in each `.env` file s
 |---|---|
 | Loki | `grafana/loki:3.7.0` |
 | Alloy | `grafana/alloy:v1.18.0` |
+| Prometheus | `prom/prometheus:v3.2.1` |
 | Grafana | `grafana/grafana:13.1.0` |
