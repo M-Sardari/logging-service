@@ -9,7 +9,7 @@
   "time": { "from": "now-6h", "to": "now" },
   "title": "Docker Loki Operations",
   "uid": "docker-loki-operations",
-  "version": 12,
+  "version": 14,
 
   "panels": [
     {
@@ -29,7 +29,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name"
+        "textMode": "value"
       },
       "targets": [
         {
@@ -59,13 +59,13 @@
         "graphMode": "none",
         "justifyMode": "center",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name"
+        "textMode": "value"
       },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\"}[$__range]))",
+          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\"}[$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -96,13 +96,13 @@
         "graphMode": "none",
         "justifyMode": "center",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name"
+        "textMode": "value"
       },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\"} |~ \"(?i)(error|critical|\\\\[ERROR\\\\]|\\\\[FATAL\\\\])\" [$__range])) or vector(0)",
+          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\", level=~\"error|critical\"}[$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
@@ -133,13 +133,13 @@
         "graphMode": "none",
         "justifyMode": "center",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name"
+        "textMode": "value"
       },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\"} |~ \"(?i)(warn|\\\\[WARN\\\\])\" [$__range])) or vector(0)",
+          "expr": "sum(count_over_time({job=~\"$job\", host=~\"$host\", container=~\"$container\", level=~\"warn\"}[$__range])) or vector(0)",
           "queryType": "instant",
           "refId": "A"
         }
