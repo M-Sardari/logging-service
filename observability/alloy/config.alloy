@@ -1,0 +1,124 @@
+// Docker container logs -> Loki
+// Only tail SamanHealth app containers (skip grafana/loki/alloy noise)
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "container_logs" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(sih-service-.+|sih-gateway)"
+    action        = "keep"
+  }
+
+  rule {
+    replacement  = "docker"
+    target_label = "job"
+  }
+
+  rule {
+    replacement  = coalesce(sys.env("LOKI_HOST"), "local-dev")
+    target_label = "host"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.container_logs.rules
+  forward_to    = [loki.process.logs.receiver]
+}
+
+loki.process "logs" {
+  // Strip ANSI color codes from CustomLogger pretty output
+  stage.decolorize {}
+
+  // JSON mode (LOG_FORMAT=json)
+  stage.json {
+    expressions = {
+      level = "level",
+    }
+  }
+
+  // Plain-text CustomLogger: [LOG] [WARN] [ERROR] ...
+  stage.regex {
+    expression = "\\[(?P<level_raw>LOG|ERROR|WARN|DEBUG|VERBOSE|FATAL)\\]"
+  }
+
+  // Normalize Nest levels -> Grafana levels (info, warn, error, ...)
+  stage.template {
+    source   = "level"
+    template = "{{ if .Value }}{{ .Value }}{{ else }}{{ .level_raw }}{{ end }}"
+  }
+
+  stage.replace {
+    expression = "^(LOG|log)$"
+    source     = "level"
+    replace    = "info"
+  }
+
+  stage.replace {
+    expression = "^(WARN|warn)$"
+    source     = "level"
+    replace    = "warn"
+  }
+
+  stage.replace {
+    expression = "^(ERROR|error)$"
+    source     = "level"
+    replace    = "error"
+  }
+
+  stage.replace {
+    expression = "^(DEBUG|debug)$"
+    source     = "level"
+    replace    = "debug"
+  }
+
+  stage.replace {
+    expression = "^(FATAL|fatal|critical)$"
+    source     = "level"
+    replace    = "critical"
+  }
+
+  stage.replace {
+    expression = "^(VERBOSE|verbose|trace)$"
+    source     = "level"
+    replace    = "trace"
+  }
+
+  // Default plain-text lines without [LEVEL] (e.g. TS watch output) -> info
+  stage.template {
+    source   = "level"
+    template = "{{ if .Value }}{{ .Value }}{{ else }}info{{ end }}"
+  }
+
+  stage.labels {
+    values = {
+      level = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

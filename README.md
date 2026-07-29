@@ -1,98 +1,112 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# logging-service — Central Observability Stack
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Central **Loki + Alloy + Grafana** stack for collecting logs from multiple Docker services on the same host.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+Service containers (stdout JSON)
+  └─ Docker json-file driver
+       └─ Alloy (docker.sock, label logging=loki)
+            └─ Loki (7-day retention)
+                 └─ Grafana — "Docker Loki Operations" dashboard
 ```
 
-## Compile and run the project
+## Quick start
 
 ```bash
-# development
-$ npm run start
+# 1. Configure host name (shown in Grafana "Host" dropdown)
+cp .env.example .env
+# edit LOKI_HOST=prod-backend  (or your machine name)
 
-# watch mode
-$ npm run start:dev
+# 2. Start the stack
+docker compose up -d
 
-# production mode
-$ npm run start:prod
+# 3. Optional: include demo NestJS app
+docker compose --profile demo up -d --build
+
+# 4. Open Grafana
+open http://localhost:8000   # admin / admin
+# Dashboard: Docker Loki Operations
 ```
 
-## Run tests
+## Connect your services
+
+Alloy collects logs from **any container on this Docker host** that has the label `logging=loki`.  
+Services do **not** need to talk to Loki directly.
+
+Add to each service in your compose file:
+
+```yaml
+environment:
+  LOG_FORMAT: json          # CustomLogger → JSON on stdout
+  LOG_TO_FILE: "false"
+  SERVICE_NAME: auth        # your service name
+labels:
+  logging: loki             # required
+  service: auth             # optional extra label
+logging:
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+networks:
+  - observability           # same network name as this stack (optional for shipping)
+```
+
+See `compose.example-service.yaml` for a full snippet.
+
+### Shared network
+
+This stack creates network `saman_log` by default (override with `DOCKER_NETWORK` in `.env`).
+
+If your services already use another network (e.g. `ba_network`):
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# .env
+DOCKER_NETWORK=ba_network
 ```
 
-## Deployment
+Or declare the network as external in both composes.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Grafana dashboard filters
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Dropdown | Loki label | Example |
+|---|---|---|
+| Job | `job` | `docker` |
+| Host | `host` | `prod-backend` (from `LOKI_HOST`) |
+| Container | `container` | `sih-service-auth` |
+| Log Level | `level` | `info`, `warn`, `error` |
+| Search Text | — | full-text search on `msg` |
+
+## Verify
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Alloy discovered containers
+docker logs sih-observability-alloy 2>&1 | tail -20
+
+# Trigger demo logs
+curl http://localhost:3000/
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Files
 
-## Resources
+| Path | Purpose |
+|---|---|
+| `docker-compose.yaml` | Loki + Alloy + Grafana (+ optional demo app profile) |
+| `observability/config.alloy` | Docker discovery, relabel, JSON parse, push |
+| `observability/loki-config.yaml` | Loki single-binary, 7d retention |
+| `observability/grafana/` | Datasource + dashboard provisioning |
+| `compose.example-service.yaml` | How to wire another service |
+| `src/common/handler/custom.logger.ts` | JSON / pretty logger used by NestJS apps |
 
-Check out a few resources that may come in handy when working with NestJS:
+## CustomLogger env vars
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+| Variable | Values | Effect |
+|---|---|---|
+| `LOG_FORMAT` | `json` / unset | JSON stdout / pretty console |
+| `LOG_TO_FILE` | `true` / unset | append plain text to `/var/log/app` |
+| `SERVICE_NAME` | e.g. `auth` | `service` field in JSON |
+| `APP_ENV` | e.g. `development` | `environment` field in JSON |
 
-## Support
+## Multiple hosts
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Run one observability stack **per Docker host**. Set a unique `LOKI_HOST` on each machine so the Grafana Host dropdown distinguishes them.

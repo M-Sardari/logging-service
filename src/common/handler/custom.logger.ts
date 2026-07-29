@@ -86,6 +86,19 @@ export class CustomLogger implements LoggerService {
     this.writeLog('FATAL', `${message}`);
   }
 
+  /** Grafana/Loki log level (info, warn, error, ...) */
+  private static toGrafanaLevel(level: LogLevel): string {
+    const map: Record<LogLevel, string> = {
+      LOG: 'info',
+      WARN: 'warn',
+      ERROR: 'error',
+      FATAL: 'critical',
+      DEBUG: 'debug',
+      VERBOSE: 'trace',
+    };
+    return map[level];
+  }
+
   private colorize(level: LogLevel, text: string): string {
     switch (level) {
       case 'ERROR':
@@ -140,10 +153,6 @@ export class CustomLogger implements LoggerService {
     const reqId = uuid ?? uuidGenerator();
     const timestamp = new Date().toISOString();
 
-    console.log('jsonMode', CustomLogger.jsonMode);
-    console.log('fileMode', CustomLogger.fileMode);
-    console.log('reqId', reqId);
-
     if (CustomLogger.jsonMode) {
       // Single-line JSON -> stdout -> Docker -> Alloy -> Loki.
       // Never make reqId a Loki label (high cardinality); it stays in the line
@@ -152,8 +161,10 @@ export class CustomLogger implements LoggerService {
         level,
         JSON.stringify({
           ts: timestamp,
-          level,
+          level: CustomLogger.toGrafanaLevel(level),
+          levelName: level,
           service: CustomLogger.service,
+          environment: process.env.APP_ENV || process.env.NODE_ENV || 'development',
           context: this.context,
           reqId,
           msg: message,
